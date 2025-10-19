@@ -1,0 +1,3 @@
+include README.md
+recursive-include jalali_calendar *.py
+recursive-include jalali_calendar/public *
