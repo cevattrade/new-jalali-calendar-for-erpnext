@@ -18,6 +18,11 @@
   const JALALI_MONTH_LENGTHS = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29];
   const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
   const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
+  const VALID_CALENDARS = ["jalali", "gregorian"];
+  const DEFAULT_CALENDAR = "jalali";
+  let ORIGINAL_CONTROL_DATE = null;
+  let ORIGINAL_CONTROL_DATETIME = null;
+  let currentCalendar = null;
 
   function div(a, b) {
     return Math.floor(a / b);
@@ -228,13 +233,118 @@
     return time ? `${isoDate} ${time}` : isoDate;
   }
 
+  function normalizeCalendarChoice(calendar) {
+    if (!calendar) {
+      throw new Error("Calendar value is required");
+    }
+    const normalized = String(calendar).trim().toLowerCase();
+    if (!VALID_CALENDARS.includes(normalized)) {
+      throw new Error(`Unsupported calendar: ${calendar}`);
+    }
+    return normalized;
+  }
+
+  function getCalendarContext() {
+    const boot = (frappe.boot && frappe.boot.jalali_calendar) || {};
+    let active;
+    try {
+      active = normalizeCalendarChoice(boot.active_calendar || DEFAULT_CALENDAR);
+    } catch (error) {
+      active = DEFAULT_CALENDAR;
+    }
+    const context = {
+      active_calendar: active,
+      source: boot.source || (boot.active_calendar ? "system" : "default"),
+      is_jalali_enabled: active === "jalali",
+    };
+    if (boot.system_calendar && VALID_CALENDARS.includes(boot.system_calendar)) {
+      context.system_calendar = boot.system_calendar;
+    }
+    if (boot.user_calendar && VALID_CALENDARS.includes(boot.user_calendar)) {
+      context.user_calendar = boot.user_calendar;
+    }
+    return context;
+  }
+
+  function updateBootContext(context) {
+    if (!context) {
+      return;
+    }
+    if (!frappe.boot) {
+      frappe.boot = {};
+    }
+    frappe.boot.jalali_calendar = context;
+  }
+
+  function invokePreferenceMethod(method, args) {
+    if (frappe.xcall) {
+      return frappe.xcall(method, args);
+    }
+    if (frappe.call) {
+      return new Promise((resolve, reject) => {
+        frappe.call({
+          method,
+          args,
+          callback: (response) => {
+            if (response && Object.prototype.hasOwnProperty.call(response, "message")) {
+              resolve(response.message);
+            } else {
+              resolve(response);
+            }
+          },
+          error: (error) => reject(error),
+        });
+      });
+    }
+    return Promise.reject(new Error("Frappe RPC helpers are not available"));
+  }
+
+  function setCalendarPreference(calendar, scope = "user") {
+    const normalizedCalendar = normalizeCalendarChoice(calendar);
+    const normalizedScope = scope === "system" ? "system" : "user";
+    return invokePreferenceMethod("jalali_calendar.api.preferences.set_calendar_preference", {
+      scope: normalizedScope,
+      calendar: normalizedCalendar,
+    }).then((context) => {
+      updateBootContext(context);
+      return applyCalendarPreference(true);
+    });
+  }
+
+  function fetchCalendarPreference() {
+    return invokePreferenceMethod("jalali_calendar.api.preferences.get_calendar_preference", {}).then(
+      (context) => {
+        updateBootContext(context);
+        return applyCalendarPreference(true);
+      }
+    );
+  }
+
+  function getCalendarPreference() {
+    const context = getCalendarContext();
+    return { ...context };
+  }
+
   frappe.jalali.normalizeDigits = normalizeDigits;
   frappe.jalali.gregorianToJalali = gregorianToJalali;
   frappe.jalali.jalaliToGregorian = jalaliToGregorian;
   frappe.jalali.fromJalaliInput = fromJalaliInput;
   frappe.jalali.toJalaliDisplay = toJalaliDisplay;
+  frappe.jalali.getCalendarPreference = getCalendarPreference;
+  frappe.jalali.fetchCalendarPreference = fetchCalendarPreference;
+  frappe.jalali.setCalendarPreference = setCalendarPreference;
+
+  function ensureOriginalControls() {
+    if (!ORIGINAL_CONTROL_DATE && frappe.ui && frappe.ui.form) {
+      ORIGINAL_CONTROL_DATE = frappe.ui.form.ControlDate || null;
+    }
+    if (!ORIGINAL_CONTROL_DATETIME && frappe.ui && frappe.ui.form) {
+      ORIGINAL_CONTROL_DATETIME = frappe.ui.form.ControlDatetime || null;
+    }
+  }
 
   function patchControlDate() {
+    ensureOriginalControls();
     const ControlDate = frappe.ui.form.ControlDate;
     if (!ControlDate || ControlDate.__jalali_patched) {
       return;
@@ -272,10 +382,20 @@
     });
 
     Extended.__jalali_patched = true;
+    Extended.__jalali_original = ORIGINAL_CONTROL_DATE;
     frappe.ui.form.ControlDate = Extended;
   }
 
+  function unpatchControlDate() {
+    ensureOriginalControls();
+    const ControlDate = frappe.ui.form.ControlDate;
+    if (ControlDate && ControlDate.__jalali_patched && ORIGINAL_CONTROL_DATE) {
+      frappe.ui.form.ControlDate = ORIGINAL_CONTROL_DATE;
+    }
+  }
+
   function patchControlDatetime() {
+    ensureOriginalControls();
     const ControlDatetime = frappe.ui.form.ControlDatetime;
     if (!ControlDatetime || ControlDatetime.__jalali_patched) {
       return;
@@ -313,17 +433,46 @@
     });
 
     Extended.__jalali_patched = true;
+    Extended.__jalali_original = ORIGINAL_CONTROL_DATETIME;
     frappe.ui.form.ControlDatetime = Extended;
   }
 
-  function applyPatches() {
-    patchControlDate();
-    patchControlDatetime();
+  function unpatchControlDatetime() {
+    ensureOriginalControls();
+    const ControlDatetime = frappe.ui.form.ControlDatetime;
+    if (ControlDatetime && ControlDatetime.__jalali_patched && ORIGINAL_CONTROL_DATETIME) {
+      frappe.ui.form.ControlDatetime = ORIGINAL_CONTROL_DATETIME;
+    }
   }
 
+  function applyCalendarPreference(force = false) {
+    const context = getCalendarContext();
+    if (!force && currentCalendar === context.active_calendar) {
+      return context;
+    }
+    currentCalendar = context.active_calendar;
+    if (context.is_jalali_enabled) {
+      patchControlDate();
+      patchControlDatetime();
+    } else {
+      unpatchControlDate();
+      unpatchControlDatetime();
+    }
+    if (typeof document !== "undefined" && document.documentElement) {
+      document.documentElement.dataset.calendar = context.active_calendar;
+    }
+    frappe.jalali.currentCalendar = context.active_calendar;
+    frappe.jalali.isActive = context.is_jalali_enabled;
+    return context;
+  }
+
+  frappe.jalali.applyCalendarPreference = applyCalendarPreference;
+  frappe.jalali.DEFAULT_CALENDAR = DEFAULT_CALENDAR;
+  frappe.jalali.VALID_CALENDARS = [...VALID_CALENDARS];
+
   if (frappe.after_ajax) {
-    frappe.after_ajax(applyPatches);
+    frappe.after_ajax(() => applyCalendarPreference());
   } else {
-    $(document).ready(applyPatches);
+    $(document).ready(() => applyCalendarPreference());
   }
 })();
