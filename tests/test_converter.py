@@ -18,6 +18,9 @@ from jalali_calendar.api.converter import (
         (date(2024, 3, 20), "1403-01-01"),
         ("2023-03-21", "1402-01-01"),
         ((2017, 1, 1), "1395-10-12"),
+        (date(2023, 3, 20), "1401-12-29"),
+        (date(2000, 3, 20), "1379-01-01"),
+        (date(2016, 2, 29), "1394-12-10"),
     ],
 )
 def test_gregorian_to_jalali_known_values(value, expected):
@@ -30,6 +33,9 @@ def test_gregorian_to_jalali_known_values(value, expected):
         (JalaliDate(1403, 1, 1), date(2024, 3, 20)),
         ("1402-01-01", date(2023, 3, 21)),
         ((1395, 10, 12), date(2017, 1, 1)),
+        ("1401-12-29", date(2023, 3, 20)),
+        ((1379, 1, 1), date(2000, 3, 20)),
+        (JalaliDate(1394, 12, 10), date(2016, 2, 29)),
     ],
 )
 def test_jalali_to_gregorian_known_values(value, expected):

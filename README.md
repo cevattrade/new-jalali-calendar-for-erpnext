@@ -9,6 +9,7 @@
 - نمایش تاریخ‌ها در فرم‌ها و لیست‌ها به‌صورت جلالی بدون تغییر در دادهٔ ذخیره‌شده.
 - تبدیل دوطرفهٔ تاریخ‌ها میان جلالی و میلادی در سمت کاربر و سمت سرور.
 - پشتیبانی از اعداد فارسی و عربی در ورودی‌ها.
+- امکان انتخاب تقویم در سطح سیستم یا کاربر (جلالی یا میلادی) بدون نیاز به خروج از برنامه.
 - ابزارهای تست واحد برای اطمینان از صحت الگوریتم تبدیل.
 - راهنمای نصب و عیب‌یابی گام‌به‌گام.
 
@@ -55,6 +56,35 @@
 bench --site site-name set-config default_language fa
 bench --site site-name execute frappe.translate.translate_docstrings --kwargs '{"lang": "fa"}'
 ```
+
+### ۳. انتخاب تقویم پیش‌فرض در سطح سیستم یا کاربر
+
+افزونه در نسخهٔ جدید امکان انتخاب تقویم فعال را در دو سطح «سیستم» و «کاربر» فراهم می‌کند. این اطلاعات در جدول پیش‌فرض‌های Frappe ذخیره شده و می‌توانید آن را با API داخلی یا از طریق کنسول تنظیم کنید:
+
+- **تغییر تقویم سیستم:**
+  ```python
+  # bench --site site-name console
+  from jalali_calendar.api import preferences
+  preferences.set_system_calendar("jalali")  # یا "gregorian"
+  ```
+
+- **تغییر تقویم برای کاربر مشخص:**
+  ```python
+  # از طریق کنسول bench یا اسکریپت برنامه
+  from jalali_calendar.api import preferences
+  preferences.set_user_calendar("gregorian", user="user@example.com")
+  ```
+
+- **از سمت کلاینت (جاوااسکریپت):**
+  ```javascript
+  // انتخاب تقویم جلالی برای کاربر جاری
+  frappe.jalali.setCalendarPreference("jalali", "user");
+
+  // بازآوری ترجیح ذخیره‌شده و اعمال آن روی کنترل‌ها
+  frappe.jalali.fetchCalendarPreference();
+  ```
+
+اگر هیچ تنظیمی اعمال نشده باشد، تقویم جلالی به صورت پیش‌فرض فعال خواهد بود. هر زمان تقویم سیستم روی «میلادی» قرار داده شود، کنترل‌های تاریخ به‌طور خودکار به حالت استاندارد Frappe بازمی‌گردند.
 
 ## نحوهٔ عملکرد
 

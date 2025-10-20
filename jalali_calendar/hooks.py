@@ -10,6 +10,9 @@ app_include_js = [
     "assets/jalali_calendar/js/jalali_calendar.bundle.js",
 ]
 
+# Boot
+boot_session = "jalali_calendar.boot.boot_session"
+
 # Fixtures / Data
 fixtures = []
 
